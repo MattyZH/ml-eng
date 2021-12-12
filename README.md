@@ -1,2 +1,17 @@
 # ml-engineering
-This branch contains initial project file and it's .py version.
+
+## titanic.ipynb
+
+Initial project file.
+
+## script 
+
+.py version of the project.
+
+## report.pdf
+
+Report about linters, used in the project.
+
+## setup.cfg 
+
+Linters (flake8) configuration file.
