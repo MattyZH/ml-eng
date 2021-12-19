@@ -1,802 +1,403 @@
-# 1
-
 import numpy as np
-import pandas as pd
-
+import random
 import matplotlib.pyplot as plt
-import seaborn as sns
-sns.set(style="darkgrid")
-
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import OneHotEncoder, LabelEncoder, StandardScaler
-from sklearn.metrics import roc_curve, auc
-from sklearn.model_selection import StratifiedKFold
-
-import string
-import warnings
-warnings.filterwarnings('ignore')
-
-SEED = 42
-
-# 2
-
-def concat_df(train_data, test_data):
-    # Returns a concatenated df of training and test set
-    return pd.concat([train_data, test_data], sort=True).reset_index(drop=True)
-
-def divide_df(all_data):
-    # Returns divided dfs of training and test set
-    return all_data.loc[:890], all_data.loc[891:].drop(['Survived'], axis=1)
-
-df_train = pd.read_csv('../input/train.csv')
-df_test = pd.read_csv('../input/test.csv')
-df_all = concat_df(df_train, df_test)
-
-df_train.name = 'Training Set'
-df_test.name = 'Test Set'
-df_all.name = 'All Set'
-
-dfs = [df_train, df_test]
-
-print('Number of Training Examples = {}'.format(df_train.shape[0]))
-print('Number of Test Examples = {}\n'.format(df_test.shape[0]))
-print('Training X Shape = {}'.format(df_train.shape))
-print('Training y Shape = {}\n'.format(df_train['Survived'].shape[0]))
-print('Test X Shape = {}'.format(df_test.shape))
-print('Test y Shape = {}\n'.format(df_test.shape[0]))
-print(df_train.columns)
-print(df_test.columns)
-
-# 3
-
-print(df_train.info())
-df_train.sample(3)
-
-# 4
-
-print(df_test.info())
-df_test.sample(3)
-
-# 5
-
-def display_missing(df):
-    for col in df.columns.tolist():
-        print('{} column missing values: {}'.format(col, df[col].isnull().sum()))
-    print('\n')
+import pandas as pd
+from typing import NoReturn, Tuple, List
 
 
-for df in dfs:
-    print('{}'.format(df.name))
-    display_missing(df)
+def read_cancer_dataset(path_to_csv: str) -> Tuple[np.array, np.array]:
+    """
 
-# 6
+    Parameters
+    ----------
+    path_to_csv : str
+        Путь к cancer датасету.
 
-df_all_corr = df_all.corr().abs().unstack().sort_values(kind="quicksort", ascending=False).reset_index()
-df_all_corr.rename(columns={"level_0": "Feature 1", "level_1": "Feature 2", 0: 'Correlation Coefficient'}, inplace=True)
-print(df_all_corr[df_all_corr['Feature 1'] == 'Age'])
-
-# 7
-
-age_by_pclass_sex = df_all.groupby(['Sex', 'Pclass']).median()['Age']
-
-for pclass in range(1, 4):
-    for sex in ['female', 'male']:
-        print('Median age of Pclass {} {}s: {}'.format(pclass, sex, age_by_pclass_sex[sex][pclass]))
-print('Median age of all passengers: {}'.format(df_all['Age'].median()))
-
-# Filling the missing values in Age with the medians of Sex and Pclass groups
-df_all['Age'] = df_all.groupby(['Sex', 'Pclass'])['Age'].apply(lambda x: x.fillna(x.median()))
-
-# 8
-
-print(df_all[df_all['Embarked'].isnull()])
-
-# 9
-
-# Filling the missing values in Embarked with S
-df_all['Embarked'] = df_all['Embarked'].fillna('S')
-
-# 10
-
-print(df_all[df_all['Fare'].isnull()])
-
-# 11
-
-med_fare = df_all.groupby(['Pclass', 'Parch', 'SibSp']).Fare.median()[3][0][0]
-# Filling the missing value in Fare with the median Fare of 3rd class alone passenger
-df_all['Fare'] = df_all['Fare'].fillna(med_fare)
-
-# 12
-
-# Creating Deck column from the first letter of the Cabin column (M stands for Missing)
-df_all['Deck'] = df_all['Cabin'].apply(lambda s: s[0] if pd.notnull(s) else 'M')
-
-df_all_decks = df_all.groupby(['Deck', 'Pclass']).count().drop(columns=['Survived', 'Sex', 'Age', 'SibSp', 'Parch',
-                                                                        'Fare', 'Embarked', 'Cabin', 'PassengerId',
-                                                                        'Ticket']).rename(
-    columns={'Name': 'Count'}).transpose()
+    Returns
+    -------
+    X : np.array
+        Матрица признаков опухолей.
+    y : np.array
+        Вектор бинарных меток, 1 соответствует доброкачественной опухоли (M),
+        0 --- злокачественной (B).
 
 
-def get_pclass_dist(df):
-    # Creating a dictionary for every passenger class count in every deck
-    deck_counts = {'A': {}, 'B': {}, 'C': {}, 'D': {}, 'E': {}, 'F': {}, 'G': {}, 'M': {}, 'T': {}}
-    decks = df.columns.levels[0]
+    """
+    df = pd.read_csv(path_to_csv, converters={'label': lambda x: 1 if x == 'M' else 0})
 
-    for deck in decks:
-        for pclass in range(1, 4):
-            try:
-                count = df[deck][pclass][0]
-                deck_counts[deck][pclass] = count
-            except KeyError:
-                deck_counts[deck][pclass] = 0
-
-    df_decks = pd.DataFrame(deck_counts)
-    deck_percentages = {}
-
-    # Creating a dictionary for every passenger class percentage in every deck
-    for col in df_decks.columns:
-        deck_percentages[col] = [(count / df_decks[col].sum()) * 100 for count in df_decks[col]]
-
-    return deck_counts, deck_percentages
+    return np.array(df.drop(labels='label')), np.array(df['label'])
 
 
-def display_pclass_dist(percentages):
-    df_percentages = pd.DataFrame(percentages).transpose()
-    deck_names = ('A', 'B', 'C', 'D', 'E', 'F', 'G', 'M', 'T')
-    bar_count = np.arange(len(deck_names))
-    bar_width = 0.85
+def read_spam_dataset(path_to_csv: str) -> Tuple[np.array, np.array]:
+    """
 
-    pclass1 = df_percentages[0]
-    pclass2 = df_percentages[1]
-    pclass3 = df_percentages[2]
+    Parameters
+    ----------
+    path_to_csv : str
+        Путь к spam датасету.
 
-    plt.figure(figsize=(20, 10))
-    plt.bar(bar_count, pclass1, color='#b5ffb9', edgecolor='white', width=bar_width, label='Passenger Class 1')
-    plt.bar(bar_count, pclass2, bottom=pclass1, color='#f9bc86', edgecolor='white', width=bar_width,
-            label='Passenger Class 2')
-    plt.bar(bar_count, pclass3, bottom=pclass1 + pclass2, color='#a3acff', edgecolor='white', width=bar_width,
-            label='Passenger Class 3')
+    Returns
+    -------
+    X : np.array
+        Матрица признаков сообщений.
+    y : np.array
+        Вектор бинарных меток,
+        1 если сообщение содержит спам, 0 если не содержит.
 
-    plt.xlabel('Deck', size=15, labelpad=20)
-    plt.ylabel('Passenger Class Percentage', size=15, labelpad=20)
-    plt.xticks(bar_count, deck_names)
-    plt.tick_params(axis='x', labelsize=15)
-    plt.tick_params(axis='y', labelsize=15)
+    """
+    df = pd.read_csv(path_to_csv)
 
-    plt.legend(loc='upper left', bbox_to_anchor=(1, 1), prop={'size': 15})
-    plt.title('Passenger Class Distribution in Decks', size=18, y=1.05)
+    return np.array(df.drop(labels='label')), np.array(df['label'])
 
+
+def train_test_split(X: np.array, y: np.array, ratio: float
+                     ) -> Tuple[np.array, np.array, np.array, np.array]:
+    """
+
+    Parameters
+    ----------
+    X : np.array
+        Матрица признаков.
+    y : np.array
+        Вектор меток.
+    ratio : float
+        Коэффициент разделения.
+
+    Returns
+    -------
+    X_train : np.array
+        Матрица признаков для train выборки.
+    y_train : np.array
+        Вектор меток для train выборки.
+    X_test : np.array
+        Матрица признаков для test выборки.
+    y_test : np.array
+        Вектор меток для test выборки.
+
+    """
+    _size = int(len(y) * ratio)
+    _indices_shuffle = random.sample(list(range(len(y))), k=len(y))
+    _train = _indices_shuffle[:_size]
+    _test = _indices_shuffle[_size:]
+
+    return X[_train], y[_train], X[_test], y[_test]
+
+
+def get_precision_recall_accuracy(y_pred: np.array, y_true: np.array
+                                  ) -> Tuple[np.array, np.array, float]:
+    """
+
+    Parameters
+    ----------
+    y_pred : np.array
+        Вектор классов, предсказанных моделью.
+    y_true : np.array
+        Вектор истинных классов.
+
+    Returns
+    -------
+    precision : np.array
+        Вектор с precision для каждого класса.
+    recall : np.array
+        Вектор с recall для каждого класса.
+    accuracy : float
+        Значение метрики accuracy (одно для всех классов).
+
+    """
+    _classes = np.unique(y_true)
+    recs, precs = np.zeros(_classes.shape[0]), np.zeros(_classes.shape[0])
+    for i, cls in enumerate(_classes):
+        cls_true = (y_true == cls).astype(np.int)
+        cls_pred = (y_pred == cls).astype(np.int)
+
+        tp = np.sum(cls_pred[cls_true == 1] == 1)
+        fp = np.sum(cls_pred[cls_true == 0] == 1)
+        fn = np.sum(cls_pred[cls_true == 1] == 0)
+
+        recs[i] = tp / (tp + fn)
+        precs[i] = tp / (tp + fp)
+
+    accuracy = np.sum(y_pred == y_true) / y_pred.shape[0]
+
+    return precs, recs, accuracy
+
+
+def plot_precision_recall(X_train, y_train, X_test, y_test, max_k=30):
+    ks = list(range(1, max_k + 1))
+    classes = len(np.unique(list(y_train) + list(y_test)))
+    precisions = [[] for _ in range(classes)]
+    recalls = [[] for _ in range(classes)]
+    accuracies = []
+    for k in ks:
+        classifier = KNearest(k)
+        classifier.fit(X_train, y_train)
+        y_pred = classifier.predict(X_test)
+        precision, recall, acc = get_precision_recall_accuracy(y_pred, y_test)
+        for c in range(classes):
+            precisions[c].append(precision[c])
+            recalls[c].append(recall[c])
+        accuracies.append(acc)
+
+    def plot(x, ys, ylabel, legend=True):
+        plt.figure(figsize=(12, 3))
+        plt.xlabel("K")
+        plt.ylabel(ylabel)
+        plt.xlim(x[0], x[-1])
+        plt.ylim(np.min(ys) - 0.01, np.max(ys) + 0.01)
+        for cls, cls_y in enumerate(ys):
+            plt.plot(x, cls_y, label="Class " + str(cls))
+        if legend:
+            plt.legend()
+        plt.tight_layout()
+        plt.show()
+
+    plot(ks, recalls, "Recall")
+    plot(ks, precisions, "Precision")
+    plot(ks, [accuracies], "Accuracy", legend=False)
+
+
+def plot_roc_curve(X_train, y_train, X_test, y_test, max_k=30):
+    positive_samples = sum(1 for y in y_test if y == 0)
+    ks = list(range(1, max_k + 1))
+    curves_tpr = []
+    curves_fpr = []
+    colors = []
+    for k in ks:
+        colors.append([k / ks[-1], 0, 1 - k / ks[-1]])
+        knearest = KNearest(k)
+        knearest.fit(X_train, y_train)
+        p_pred = [p[0] for p in knearest.predict_proba(X_test)]
+        tpr = []
+        fpr = []
+        for w in np.arange(-0.01, 1.02, 0.01):
+            y_pred = [(0 if p > w else 1) for p in p_pred]
+            tpr.append(sum(1 for yp, yt in zip(y_pred, y_test) if yp == 0 and yt == 0) / positive_samples)
+            fpr.append(sum(1 for yp, yt in zip(y_pred, y_test) if
+                           yp == 0 and yt != 0) / (len(y_test) - positive_samples))
+        curves_tpr.append(tpr)
+        curves_fpr.append(fpr)
+    plt.figure(figsize=(7, 7))
+    for tpr, fpr, c in zip(curves_tpr, curves_fpr, colors):
+        plt.plot(fpr, tpr, color=c)
+    plt.plot([0, 1], [0, 1], linestyle="--")
+    plt.xlabel("False positive rate")
+    plt.ylabel("True positive rate")
+    plt.xlim(-0.01, 1.01)
+    plt.ylim(-0.01, 1.01)
+    plt.tight_layout()
     plt.show()
 
 
-all_deck_count, all_deck_per = get_pclass_dist(df_all_decks)
-display_pclass_dist(all_deck_per)
-
-# 13
-
-# Passenger in the T deck is changed to A
-idx = df_all[df_all['Deck'] == 'T'].index
-df_all.loc[idx, 'Deck'] = 'A'
-
-# 14
-
-df_all_decks_survived = df_all.groupby(['Deck', 'Survived']).count().drop(
-    columns=['Sex', 'Age', 'SibSp', 'Parch', 'Fare',
-             'Embarked', 'Pclass', 'Cabin', 'PassengerId', 'Ticket']).rename(columns={'Name': 'Count'}).transpose()
-
-
-def get_survived_dist(df):
-    # Creating a dictionary for every survival count in every deck
-    surv_counts = {'A': {}, 'B': {}, 'C': {}, 'D': {}, 'E': {}, 'F': {}, 'G': {}, 'M': {}}
-    decks = df.columns.levels[0]
-
-    for deck in decks:
-        for survive in range(0, 2):
-            surv_counts[deck][survive] = df[deck][survive][0]
-
-    df_surv = pd.DataFrame(surv_counts)
-    surv_percentages = {}
-
-    for col in df_surv.columns:
-        surv_percentages[col] = [(count / df_surv[col].sum()) * 100 for count in df_surv[col]]
-
-    return surv_counts, surv_percentages
-
-
-def display_surv_dist(percentages):
-    df_survived_percentages = pd.DataFrame(percentages).transpose()
-    deck_names = ('A', 'B', 'C', 'D', 'E', 'F', 'G', 'M')
-    bar_count = np.arange(len(deck_names))
-    bar_width = 0.85
-
-    not_survived = df_survived_percentages[0]
-    survived = df_survived_percentages[1]
-
-    plt.figure(figsize=(20, 10))
-    plt.bar(bar_count, not_survived, color='#b5ffb9', edgecolor='white', width=bar_width, label="Not Survived")
-    plt.bar(bar_count, survived, bottom=not_survived, color='#f9bc86', edgecolor='white', width=bar_width,
-            label="Survived")
-
-    plt.xlabel('Deck', size=15, labelpad=20)
-    plt.ylabel('Survival Percentage', size=15, labelpad=20)
-    plt.xticks(bar_count, deck_names)
-    plt.tick_params(axis='x', labelsize=15)
-    plt.tick_params(axis='y', labelsize=15)
-
-    plt.legend(loc='upper left', bbox_to_anchor=(1, 1), prop={'size': 15})
-    plt.title('Survival Percentage in Decks', size=18, y=1.05)
-
-    plt.show()
-
-
-all_surv_count, all_surv_per = get_survived_dist(df_all_decks_survived)
-display_surv_dist(all_surv_per)
-
-# 15
-
-df_all['Deck'] = df_all['Deck'].replace(['A', 'B', 'C'], 'ABC')
-df_all['Deck'] = df_all['Deck'].replace(['D', 'E'], 'DE')
-df_all['Deck'] = df_all['Deck'].replace(['F', 'G'], 'FG')
-
-df_all['Deck'].value_counts()
-
-# 16
-
-# Dropping the Cabin feature
-df_all.drop(['Cabin'], inplace=True, axis=1)
-
-df_train, df_test = divide_df(df_all)
-dfs = [df_train, df_test]
-
-for df in dfs:
-    display_missing(df)
-
-# 17
-
-survived = df_train['Survived'].value_counts()[1]
-not_survived = df_train['Survived'].value_counts()[0]
-survived_per = survived / df_train.shape[0] * 100
-not_survived_per = not_survived / df_train.shape[0] * 100
-
-print('{} of {} passengers survived and it is the {:.2f}% of the training set.'.format(survived, df_train.shape[0], survived_per))
-print('{} of {} passengers didnt survive and it is the {:.2f}% of the training set.'.format(not_survived, df_train.shape[0], not_survived_per))
-
-plt.figure(figsize=(10, 8))
-sns.countplot(df_train['Survived'])
-
-plt.xlabel('Survival', size=15, labelpad=15)
-plt.ylabel('Passenger Count', size=15, labelpad=15)
-plt.xticks((0, 1), ['Not Survived ({0:.2f}%)'.format(not_survived_per), 'Survived ({0:.2f}%)'.format(survived_per)])
-plt.tick_params(axis='x', labelsize=13)
-plt.tick_params(axis='y', labelsize=13)
-
-plt.title('Training Set Survival Distribution', size=15, y=1.05)
-
-plt.show()
-
-# 18
-
-df_train_corr = df_train.drop(['PassengerId'], axis=1).corr().abs().unstack().sort_values(kind="quicksort", ascending=False).reset_index()
-df_train_corr.rename(columns={"level_0": "Feature 1", "level_1": "Feature 2", 0: 'Correlation Coefficient'}, inplace=True)
-df_train_corr.drop(df_train_corr.iloc[1::2].index, inplace=True)
-df_train_corr_nd = df_train_corr.drop(df_train_corr[df_train_corr['Correlation Coefficient'] == 1.0].index)
-
-df_test_corr = df_test.corr().abs().unstack().sort_values(kind="quicksort", ascending=False).reset_index()
-df_test_corr.rename(columns={"level_0": "Feature 1", "level_1": "Feature 2", 0: 'Correlation Coefficient'}, inplace=True)
-df_test_corr.drop(df_test_corr.iloc[1::2].index, inplace=True)
-df_test_corr_nd = df_test_corr.drop(df_test_corr[df_test_corr['Correlation Coefficient'] == 1.0].index)
-
-# 19
-
-# Training set high correlations
-corr = df_train_corr_nd['Correlation Coefficient'] > 0.1
-print(df_train_corr_nd[corr])
-
-# 20
-
-# Test set high correlations
-corr = df_test_corr_nd['Correlation Coefficient'] > 0.1
-print(df_test_corr_nd[corr])
-
-# 21
-
-fig, axs = plt.subplots(nrows=2, figsize=(20, 20))
-
-sns.heatmap(df_train.drop(['PassengerId'], axis=1).corr(), ax=axs[0], annot=True, square=True, cmap='coolwarm',
-            annot_kws={'size': 14})
-sns.heatmap(df_test.drop(['PassengerId'], axis=1).corr(), ax=axs[1], annot=True, square=True, cmap='coolwarm',
-            annot_kws={'size': 14})
-
-for i in range(2):
-    axs[i].tick_params(axis='x', labelsize=14)
-    axs[i].tick_params(axis='y', labelsize=14)
-
-axs[0].set_title('Training Set Correlations', size=15)
-axs[1].set_title('Test Set Correlations', size=15)
-
-plt.show()
-
-# 22
-
-cont_features = ['Age', 'Fare']
-surv = df_train['Survived'] == 1
-
-fig, axs = plt.subplots(ncols=2, nrows=2, figsize=(20, 20))
-plt.subplots_adjust(right=1.5)
-
-for i, feature in enumerate(cont_features):
-    # Distribution of survival in feature
-    sns.distplot(df_train[~surv][feature], label='Not Survived', hist=True, color='#e74c3c', ax=axs[0][i])
-    sns.distplot(df_train[surv][feature], label='Survived', hist=True, color='#2ecc71', ax=axs[0][i])
-
-    # Distribution of feature in dataset
-    sns.distplot(df_train[feature], label='Training Set', hist=False, color='#e74c3c', ax=axs[1][i])
-    sns.distplot(df_test[feature], label='Test Set', hist=False, color='#2ecc71', ax=axs[1][i])
-
-    axs[0][i].set_xlabel('')
-    axs[1][i].set_xlabel('')
-
-    for j in range(2):
-        axs[i][j].tick_params(axis='x', labelsize=20)
-        axs[i][j].tick_params(axis='y', labelsize=20)
-
-    axs[0][i].legend(loc='upper right', prop={'size': 20})
-    axs[1][i].legend(loc='upper right', prop={'size': 20})
-    axs[0][i].set_title('Distribution of Survival in {}'.format(feature), size=20, y=1.05)
-
-axs[1][0].set_title('Distribution of {} Feature'.format('Age'), size=20, y=1.05)
-axs[1][1].set_title('Distribution of {} Feature'.format('Fare'), size=20, y=1.05)
-
-plt.show()
-
-# 23
-
-cat_features = ['Embarked', 'Parch', 'Pclass', 'Sex', 'SibSp', 'Deck']
-
-fig, axs = plt.subplots(ncols=2, nrows=3, figsize=(20, 20))
-plt.subplots_adjust(right=1.5, top=1.25)
-
-for i, feature in enumerate(cat_features, 1):
-    plt.subplot(2, 3, i)
-    sns.countplot(x=feature, hue='Survived', data=df_train)
-
-    plt.xlabel('{}'.format(feature), size=20, labelpad=15)
-    plt.ylabel('Passenger Count', size=20, labelpad=15)
-    plt.tick_params(axis='x', labelsize=20)
-    plt.tick_params(axis='y', labelsize=20)
-
-    plt.legend(['Not Survived', 'Survived'], loc='upper center', prop={'size': 18})
-    plt.title('Count of Survival in {} Feature'.format(feature), size=20, y=1.05)
-
-plt.show()
-
-# 24
-
-df_all = concat_df(df_train, df_test)
-df_all.head()
-
-# 25
-
-df_all['Fare'] = pd.qcut(df_all['Fare'], 13)
-
-# 26
-
-fig, axs = plt.subplots(figsize=(22, 9))
-sns.countplot(x='Fare', hue='Survived', data=df_all)
-
-plt.xlabel('Fare', size=15, labelpad=20)
-plt.ylabel('Passenger Count', size=15, labelpad=20)
-plt.tick_params(axis='x', labelsize=10)
-plt.tick_params(axis='y', labelsize=15)
-
-plt.legend(['Not Survived', 'Survived'], loc='upper right', prop={'size': 15})
-plt.title('Count of Survival in {} Feature'.format('Fare'), size=15, y=1.05)
-
-plt.show()
-
-# 27
-
-df_all['Age'] = pd.qcut(df_all['Age'], 10)
-
-# 28
-
-
-fig, axs = plt.subplots(figsize=(22, 9))
-sns.countplot(x='Age', hue='Survived', data=df_all)
-
-plt.xlabel('Age', size=15, labelpad=20)
-plt.ylabel('Passenger Count', size=15, labelpad=20)
-plt.tick_params(axis='x', labelsize=15)
-plt.tick_params(axis='y', labelsize=15)
-
-plt.legend(['Not Survived', 'Survived'], loc='upper right', prop={'size': 15})
-plt.title('Survival Counts in {} Feature'.format('Age'), size=15, y=1.05)
-
-plt.show()
-
-# 29
-
-df_all['Family_Size'] = df_all['SibSp'] + df_all['Parch'] + 1
-
-fig, axs = plt.subplots(figsize=(20, 20), ncols=2, nrows=2)
-plt.subplots_adjust(right=1.5)
-
-sns.barplot(x=df_all['Family_Size'].value_counts().index, y=df_all['Family_Size'].value_counts().values, ax=axs[0][0])
-sns.countplot(x='Family_Size', hue='Survived', data=df_all, ax=axs[0][1])
-
-axs[0][0].set_title('Family Size Feature Value Counts', size=20, y=1.05)
-axs[0][1].set_title('Survival Counts in Family Size ', size=20, y=1.05)
-
-family_map = {1: 'Alone', 2: 'Small', 3: 'Small', 4: 'Small', 5: 'Medium', 6: 'Medium', 7: 'Large', 8: 'Large', 11: 'Large'}
-df_all['Family_Size_Grouped'] = df_all['Family_Size'].map(family_map)
-
-sns.barplot(x=df_all['Family_Size_Grouped'].value_counts().index, y=df_all['Family_Size_Grouped'].value_counts().values, ax=axs[1][0])
-sns.countplot(x='Family_Size_Grouped', hue='Survived', data=df_all, ax=axs[1][1])
-
-axs[1][0].set_title('Family Size Feature Value Counts After Grouping', size=20, y=1.05)
-axs[1][1].set_title('Survival Counts in Family Size After Grouping', size=20, y=1.05)
-
-for i in range(2):
-    axs[i][1].legend(['Not Survived', 'Survived'], loc='upper right', prop={'size': 20})
-    for j in range(2):
-        axs[i][j].tick_params(axis='x', labelsize=20)
-        axs[i][j].tick_params(axis='y', labelsize=20)
-        axs[i][j].set_xlabel('')
-        axs[i][j].set_ylabel('')
-
-plt.show()
-
-# 30
-
-df_all['Ticket_Frequency'] = df_all.groupby('Ticket')['Ticket'].transform('count')
-
-# 31
-
-fig, axs = plt.subplots(figsize=(12, 9))
-sns.countplot(x='Ticket_Frequency', hue='Survived', data=df_all)
-
-plt.xlabel('Ticket Frequency', size=15, labelpad=20)
-plt.ylabel('Passenger Count', size=15, labelpad=20)
-plt.tick_params(axis='x', labelsize=15)
-plt.tick_params(axis='y', labelsize=15)
-
-plt.legend(['Not Survived', 'Survived'], loc='upper right', prop={'size': 15})
-plt.title('Count of Survival in {} Feature'.format('Ticket Frequency'), size=15, y=1.05)
-
-plt.show()
-
-# 32
-
-df_all['Title'] = df_all['Name'].str.split(', ', expand=True)[1].str.split('.', expand=True)[0]
-df_all['Is_Married'] = 0
-df_all['Is_Married'].loc[df_all['Title'] == 'Mrs'] = 1
-
-# 33
-
-fig, axs = plt.subplots(nrows=2, figsize=(20, 20))
-sns.barplot(x=df_all['Title'].value_counts().index, y=df_all['Title'].value_counts().values, ax=axs[0])
-
-axs[0].tick_params(axis='x', labelsize=10)
-axs[1].tick_params(axis='x', labelsize=15)
-
-for i in range(2):
-    axs[i].tick_params(axis='y', labelsize=15)
-
-axs[0].set_title('Title Feature Value Counts', size=20, y=1.05)
-
-df_all['Title'] = df_all['Title'].replace(['Miss', 'Mrs','Ms', 'Mlle', 'Lady', 'Mme', 'the Countess', 'Dona'], 'Miss/Mrs/Ms')
-df_all['Title'] = df_all['Title'].replace(['Dr', 'Col', 'Major', 'Jonkheer', 'Capt', 'Sir', 'Don', 'Rev'], 'Dr/Military/Noble/Clergy')
-
-sns.barplot(x=df_all['Title'].value_counts().index, y=df_all['Title'].value_counts().values, ax=axs[1])
-axs[1].set_title('Title Feature Value Counts After Grouping', size=20, y=1.05)
-
-plt.show()
-
-# 34
-
-def extract_surname(data):
-    families = []
-
-    for i in range(len(data)):
-        name = data.iloc[i]
-
-        if '(' in name:
-            name_no_bracket = name.split('(')[0]
-        else:
-            name_no_bracket = name
-
-        family = name_no_bracket.split(',')[0]
-        title = name_no_bracket.split(',')[1].strip().split(' ')[0]
-
-        for c in string.punctuation:
-            family = family.replace(c, '').strip()
-
-        families.append(family)
-
-    return families
-
-
-df_all['Family'] = extract_surname(df_all['Name'])
-df_train = df_all.loc[:890]
-df_test = df_all.loc[891:]
-dfs = [df_train, df_test]
-
-# 35
-
-# Creating a list of families and tickets that are occuring in both training and test set
-non_unique_families = [x for x in df_train['Family'].unique() if x in df_test['Family'].unique()]
-non_unique_tickets = [x for x in df_train['Ticket'].unique() if x in df_test['Ticket'].unique()]
-
-df_family_survival_rate = df_train.groupby('Family')['Survived', 'Family','Family_Size'].median()
-df_ticket_survival_rate = df_train.groupby('Ticket')['Survived', 'Ticket','Ticket_Frequency'].median()
-
-family_rates = {}
-ticket_rates = {}
-
-for i in range(len(df_family_survival_rate)):
-    # Checking a family exists in both training and test set, and has members more than 1
-    if df_family_survival_rate.index[i] in non_unique_families and df_family_survival_rate.iloc[i, 1] > 1:
-        family_rates[df_family_survival_rate.index[i]] = df_family_survival_rate.iloc[i, 0]
-
-for i in range(len(df_ticket_survival_rate)):
-    # Checking a ticket exists in both training and test set, and has members more than 1
-    if df_ticket_survival_rate.index[i] in non_unique_tickets and df_ticket_survival_rate.iloc[i, 1] > 1:
-        ticket_rates[df_ticket_survival_rate.index[i]] = df_ticket_survival_rate.iloc[i, 0]
-
-# 36
-
-mean_survival_rate = np.mean(df_train['Survived'])
-
-train_family_survival_rate = []
-train_family_survival_rate_NA = []
-test_family_survival_rate = []
-test_family_survival_rate_NA = []
-
-for i in range(len(df_train)):
-    if df_train['Family'][i] in family_rates:
-        train_family_survival_rate.append(family_rates[df_train['Family'][i]])
-        train_family_survival_rate_NA.append(1)
-    else:
-        train_family_survival_rate.append(mean_survival_rate)
-        train_family_survival_rate_NA.append(0)
-
-for i in range(len(df_test)):
-    if df_test['Family'].iloc[i] in family_rates:
-        test_family_survival_rate.append(family_rates[df_test['Family'].iloc[i]])
-        test_family_survival_rate_NA.append(1)
-    else:
-        test_family_survival_rate.append(mean_survival_rate)
-        test_family_survival_rate_NA.append(0)
-
-df_train['Family_Survival_Rate'] = train_family_survival_rate
-df_train['Family_Survival_Rate_NA'] = train_family_survival_rate_NA
-df_test['Family_Survival_Rate'] = test_family_survival_rate
-df_test['Family_Survival_Rate_NA'] = test_family_survival_rate_NA
-
-train_ticket_survival_rate = []
-train_ticket_survival_rate_NA = []
-test_ticket_survival_rate = []
-test_ticket_survival_rate_NA = []
-
-for i in range(len(df_train)):
-    if df_train['Ticket'][i] in ticket_rates:
-        train_ticket_survival_rate.append(ticket_rates[df_train['Ticket'][i]])
-        train_ticket_survival_rate_NA.append(1)
-    else:
-        train_ticket_survival_rate.append(mean_survival_rate)
-        train_ticket_survival_rate_NA.append(0)
-
-for i in range(len(df_test)):
-    if df_test['Ticket'].iloc[i] in ticket_rates:
-        test_ticket_survival_rate.append(ticket_rates[df_test['Ticket'].iloc[i]])
-        test_ticket_survival_rate_NA.append(1)
-    else:
-        test_ticket_survival_rate.append(mean_survival_rate)
-        test_ticket_survival_rate_NA.append(0)
-
-df_train['Ticket_Survival_Rate'] = train_ticket_survival_rate
-df_train['Ticket_Survival_Rate_NA'] = train_ticket_survival_rate_NA
-df_test['Ticket_Survival_Rate'] = test_ticket_survival_rate
-df_test['Ticket_Survival_Rate_NA'] = test_ticket_survival_rate_NA
-
-# 37
-
-for df in [df_train, df_test]:
-    df['Survival_Rate'] = (df['Ticket_Survival_Rate'] + df['Family_Survival_Rate']) / 2
-    df['Survival_Rate_NA'] = (df['Ticket_Survival_Rate_NA'] + df['Family_Survival_Rate_NA']) / 2
-
-# 38
-
-non_numeric_features = ['Embarked', 'Sex', 'Deck', 'Title', 'Family_Size_Grouped', 'Age', 'Fare']
-
-for df in dfs:
-    for feature in non_numeric_features:
-        df[feature] = LabelEncoder().fit_transform(df[feature])
-
-# 39
-
-cat_features = ['Pclass', 'Sex', 'Deck', 'Embarked', 'Title', 'Family_Size_Grouped']
-encoded_features = []
-
-for df in dfs:
-    for feature in cat_features:
-        encoded_feat = OneHotEncoder().fit_transform(df[feature].values.reshape(-1, 1)).toarray()
-        n = df[feature].nunique()
-        cols = ['{}_{}'.format(feature, n) for n in range(1, n + 1)]
-        encoded_df = pd.DataFrame(encoded_feat, columns=cols)
-        encoded_df.index = df.index
-        encoded_features.append(encoded_df)
-
-df_train = pd.concat([df_train, *encoded_features[:6]], axis=1)
-df_test = pd.concat([df_test, *encoded_features[6:]], axis=1)
-
-# 40
-
-df_all = concat_df(df_train, df_test)
-drop_cols = ['Deck', 'Embarked', 'Family', 'Family_Size', 'Family_Size_Grouped', 'Survived',
-             'Name', 'Parch', 'PassengerId', 'Pclass', 'Sex', 'SibSp', 'Ticket', 'Title',
-            'Ticket_Survival_Rate', 'Family_Survival_Rate', 'Ticket_Survival_Rate_NA', 'Family_Survival_Rate_NA']
-
-df_all.drop(columns=drop_cols, inplace=True)
-
-df_all.head()
-
-# 41
-
-X_train = StandardScaler().fit_transform(df_train.drop(columns=drop_cols))
-y_train = df_train['Survived'].values
-X_test = StandardScaler().fit_transform(df_test.drop(columns=drop_cols))
-
-print('X_train shape: {}'.format(X_train.shape))
-print('y_train shape: {}'.format(y_train.shape))
-print('X_test shape: {}'.format(X_test.shape))
-
-# 42
-
-single_best_model = RandomForestClassifier(criterion='gini',
-                                           n_estimators=1100,
-                                           max_depth=5,
-                                           min_samples_split=4,
-                                           min_samples_leaf=5,
-                                           max_features='auto',
-                                           oob_score=True,
-                                           random_state=SEED,
-                                           n_jobs=-1,
-                                           verbose=1)
-
-leaderboard_model = RandomForestClassifier(criterion='gini',
-                                           n_estimators=1750,
-                                           max_depth=7,
-                                           min_samples_split=6,
-                                           min_samples_leaf=6,
-                                           max_features='auto',
-                                           oob_score=True,
-                                           random_state=SEED,
-                                           n_jobs=-1,
-                                           verbose=1)
-
-# 43
-
-N = 5
-oob = 0
-probs = pd.DataFrame(np.zeros((len(X_test), N * 2)),
-                     columns=['Fold_{}_Prob_{}'.format(i, j) for i in range(1, N + 1) for j in range(2)])
-importances = pd.DataFrame(np.zeros((X_train.shape[1], N)), columns=['Fold_{}'.format(i) for i in range(1, N + 1)],
-                           index=df_all.columns)
-fprs, tprs, scores = [], [], []
-
-skf = StratifiedKFold(n_splits=N, random_state=N, shuffle=True)
-
-for fold, (trn_idx, val_idx) in enumerate(skf.split(X_train, y_train), 1):
-    print('Fold {}\n'.format(fold))
-
-    # Fitting the model
-    leaderboard_model.fit(X_train[trn_idx], y_train[trn_idx])
-
-    # Computing Train AUC score
-    trn_fpr, trn_tpr, trn_thresholds = roc_curve(y_train[trn_idx],
-                                                 leaderboard_model.predict_proba(X_train[trn_idx])[:, 1])
-    trn_auc_score = auc(trn_fpr, trn_tpr)
-    # Computing Validation AUC score
-    val_fpr, val_tpr, val_thresholds = roc_curve(y_train[val_idx],
-                                                 leaderboard_model.predict_proba(X_train[val_idx])[:, 1])
-    val_auc_score = auc(val_fpr, val_tpr)
-
-    scores.append((trn_auc_score, val_auc_score))
-    fprs.append(val_fpr)
-    tprs.append(val_tpr)
-
-    # X_test probabilities
-    probs.loc[:, 'Fold_{}_Prob_0'.format(fold)] = leaderboard_model.predict_proba(X_test)[:, 0]
-    probs.loc[:, 'Fold_{}_Prob_1'.format(fold)] = leaderboard_model.predict_proba(X_test)[:, 1]
-    importances.iloc[:, fold - 1] = leaderboard_model.feature_importances_
-
-    oob += leaderboard_model.oob_score_ / N
-    print('Fold {} OOB Score: {}\n'.format(fold, leaderboard_model.oob_score_))
-
-print('Average OOB Score: {}'.format(oob))
-
-# 44
-
-importances['Mean_Importance'] = importances.mean(axis=1)
-importances.sort_values(by='Mean_Importance', inplace=True, ascending=False)
-
-plt.figure(figsize=(15, 20))
-sns.barplot(x='Mean_Importance', y=importances.index, data=importances)
-
-plt.xlabel('')
-plt.tick_params(axis='x', labelsize=15)
-plt.tick_params(axis='y', labelsize=15)
-plt.title('Random Forest Classifier Mean Feature Importance Between Folds', size=15)
-
-plt.show()
-
-# 45
-
-def plot_roc_curve(fprs, tprs):
-    tprs_interp = []
-    aucs = []
-    mean_fpr = np.linspace(0, 1, 100)
-    f, ax = plt.subplots(figsize=(15, 15))
-
-    # Plotting ROC for each fold and computing AUC scores
-    for i, (fpr, tpr) in enumerate(zip(fprs, tprs), 1):
-        tprs_interp.append(np.interp(mean_fpr, fpr, tpr))
-        tprs_interp[-1][0] = 0.0
-        roc_auc = auc(fpr, tpr)
-        aucs.append(roc_auc)
-        ax.plot(fpr, tpr, lw=1, alpha=0.3, label='ROC Fold {} (AUC = {:.3f})'.format(i, roc_auc))
-
-    # Plotting ROC for random guessing
-    plt.plot([0, 1], [0, 1], linestyle='--', lw=2, color='r', alpha=0.8, label='Random Guessing')
-
-    mean_tpr = np.mean(tprs_interp, axis=0)
-    mean_tpr[-1] = 1.0
-    mean_auc = auc(mean_fpr, mean_tpr)
-    std_auc = np.std(aucs)
-
-    # Plotting the mean ROC
-    ax.plot(mean_fpr, mean_tpr, color='b', label='Mean ROC (AUC = {:.3f} $\pm$ {:.3f})'.format(mean_auc, std_auc), lw=2,
-            alpha=0.8)
-
-    # Plotting the standard deviation around the mean ROC Curve
-    std_tpr = np.std(tprs_interp, axis=0)
-    tprs_upper = np.minimum(mean_tpr + std_tpr, 1)
-    tprs_lower = np.maximum(mean_tpr - std_tpr, 0)
-    ax.fill_between(mean_fpr, tprs_lower, tprs_upper, color='grey', alpha=.2, label='$\pm$ 1 std. dev.')
-
-    ax.set_xlabel('False Positive Rate', size=15, labelpad=20)
-    ax.set_ylabel('True Positive Rate', size=15, labelpad=20)
-    ax.tick_params(axis='x', labelsize=15)
-    ax.tick_params(axis='y', labelsize=15)
-    ax.set_xlim([-0.05, 1.05])
-    ax.set_ylim([-0.05, 1.05])
-
-    ax.set_title('ROC Curves of Folds', size=20, y=1.02)
-    ax.legend(loc='lower right', prop={'size': 13})
-
-    plt.show()
-
-
-plot_roc_curve(fprs, tprs)
-
-# 46
-
-class_survived = [col for col in probs.columns if col.endswith('Prob_1')]
-probs['1'] = probs[class_survived].sum(axis=1) / N
-probs['0'] = probs.drop(columns=class_survived).sum(axis=1) / N
-probs['pred'] = 0
-pos = probs[probs['1'] >= 0.5].index
-probs.loc[pos, 'pred'] = 1
-
-y_pred = probs['pred'].astype(int)
-
-submission_df = pd.DataFrame(columns=['PassengerId', 'Survived'])
-submission_df['PassengerId'] = df_test['PassengerId']
-submission_df['Survived'] = y_pred.values
-submission_df.to_csv('submissions.csv', header=True, index=False)
-submission_df.head(10)
-
-
-
-
+class KDTree:
+    def __init__(self, X: np.array, leaf_size: int = 40):
+        """
+
+        Parameters
+        ----------
+        X : np.array
+            Набор точек, по которому строится дерево.
+        leaf_size : int
+            Минимальный размер листа
+            (то есть, пока возможно, пространство разбивается на области,
+            в которых не меньше leaf_size точек).
+
+        Returns
+        -------
+
+        """
+        self.X = X
+        self.leaf_size = leaf_size
+        dim = len(X[0])
+        self.dim = dim
+
+        class Node:
+            def __init__(self, population: list, parent=None, coord: int = -1, val: float = 0):
+                """
+                population:
+                    list of indices of points in the node
+                parent:
+                    parent node
+                coord:
+                    coordinate of splitting with sibling node
+                val:
+                    value of splitting with sibling node
+                """
+                self.population = population
+                self.parent = parent
+                self.coord = coord
+                self.val = val
+                self.child = None
+
+        init_node = Node(population=[i for i in range(len(X))])
+        self.init_node = init_node
+        self.node_que = [init_node]
+        for node in self.node_que:
+            _pop = node.population
+            if len(_pop) > leaf_size:
+                _pop_dots = X[_pop]
+                c = (node.coord + 1) % dim  # new coordinate for splitting
+                pivot = np.median(_pop_dots[:, c])  # pivot of splitting
+                pop_1 = []
+                pop_2 = []
+                for i in _pop:
+                    if X[i][c] > pivot:
+                        pop_1.append(i)
+                    else:
+                        pop_2.append(i)
+                node_1 = Node(population=pop_1, parent=node, coord=c, val=pivot)
+                node_2 = Node(population=pop_2, parent=node, coord=c, val=pivot)
+                node.child = (node_1, node_2)
+                self.node_que.extend([node_1, node_2])
+
+    def query(self, X: np.array, k: int = 1) -> List[List]:
+        """
+
+        Parameters
+        ----------
+        X : np.array
+            Набор точек, для которых нужно найти ближайших соседей.
+        k : int
+            Число ближайших соседей.
+
+        Returns
+        -------
+        list[list]
+            Список списков (длина каждого списка k):
+            индексы k ближайших соседей для всех точек из X.
+
+        """
+
+        def true_close(x0: np.array, inds: list, n: int = 1):
+            bests = list(sorted([(i, np.linalg.norm(x - x0)) for i, x in enumerate(self.X[inds])], key=lambda x: x[1]))
+            return bests[:min(n, len(bests))]
+
+        ans = []
+        for dot in X:
+            leaf = self.init_node
+            while leaf.child and len(leaf.population) > 2 * k:
+                if dot[leaf.coord] > leaf.val:
+                    leaf = leaf.child[0]
+                else:
+                    leaf = leaf.child[1]
+            node = leaf
+
+            closest = true_close(x0=dot, inds=node.population, n=k)
+            max_of_closest = closest[-1][1]
+            node_1 = node
+            dist = [abs(dot[node_1.coord] - node_1.val)]
+            while node_1.parent:
+                node_1 = node_1.parent
+                dist.append(abs(dot[node_1.coord] - node_1.val))
+            height = len(dist)
+            upper = 0
+            for i in range(2, height):
+                if dist[height - i] <= max_of_closest:
+                    upper = height - i
+                    break
+            for i in range(upper + 1):
+                node = node.parent
+            closest = true_close(x0=dot, inds=node.population, n=k)
+
+            ans.append([i[0] for i in closest])
+        return ans
+
+
+class KNearest:
+    def __init__(self, n_neighbors: int = 5, leaf_size: int = 30):
+        """
+
+        Parameters
+        ----------
+        n_neighbors : int
+            Число соседей, по которым предсказывается класс.
+        leaf_size : int
+            Минимальный размер листа в KD-дереве.
+
+        """
+        self.n_neighbors = n_neighbors
+        self.leaf_size = leaf_size
+
+    def fit(self, X: np.array, y: np.array) -> NoReturn:
+        """
+
+        Parameters
+        ----------
+        X : np.array
+            Набор точек, по которым строится классификатор.
+        y : np.array
+            Метки точек, по которым строится классификатор.
+
+        """
+
+        self.mins = []
+        self.maxs = []
+        for i in range(len(X[0])):
+            self.mins.append(min(X[:, i]))
+            self.maxs.append(max(X[:, i]))
+            X[:, i] = np.array((X[:, i] - self.mins[i]) * 1.0 / (self.maxs[i] - self.mins[i]))
+
+        self.tree = KDTree(X=X, leaf_size=self.leaf_size)
+        self.y = y
+        self.classes = len(np.unique(y))
+
+    def predict_proba(self, X: np.array) -> List[np.array]:
+        """
+
+        Parameters
+        ----------
+        X : np.array
+            Набор точек, для которых нужно определить класс.
+
+        Returns
+        -------
+        list[np.array]
+            Список np.array (длина каждого np.array равна числу классов):
+            вероятности классов для каждой точки X.
+
+
+        """
+
+        for i in range(X.shape[1]):
+            X[:, i] = np.array((X[:, i] - self.mins[i]) * 1.0 / (self.maxs[i] - self.mins[i]))
+        neighbor_list = self.tree.query(X, k=self.n_neighbors)
+        ans = []
+        n_classes = len(set(self.y))
+        for neighbors in neighbor_list:
+            css = [0] * n_classes
+            for i in neighbors:
+                css[self.y[i]] += 1
+            ans.append(np.array([css[i] * 1.0 / self.n_neighbors for i in range(n_classes)]))
+        return ans
+
+    def predict(self, X: np.array) -> np.array:
+        """
+
+        Parameters
+        ----------
+        X : np.array
+            Набор точек, для которых нужно определить класс.
+
+        Returns
+        -------
+        np.array
+            Вектор предсказанных классов.
+
+
+        """
+        return np.argmax(self.predict_proba(X), axis=1)
+
+
+def plot_everything(max_k=30):
+    X, y = read_cancer_dataset('./data/cancer.csv')
+    X_train, y_train, X_test, y_test = train_test_split(X, y, 0.9)
+    plot_precision_recall(X_train, y_train, X_test, y_test, max_k=max_k)
+    plot_roc_curve(X_train, y_train, X_test, y_test, max_k=max_k)
+
+    X, y = read_spam_dataset('./data/spam.csv')
+    X_train, y_train, X_test, y_test = train_test_split(X, y, 0.9)
+    plot_precision_recall(X_train, y_train, X_test, y_test, max_k=max_k)
+    plot_roc_curve(X_train, y_train, X_test, y_test, max_k=max_k)
+
+
+if __name__ == '__main__':
+    plot_everything()
