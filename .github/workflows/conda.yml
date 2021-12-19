@@ -1,0 +1,34 @@
+name: Main
+
+on: [push]
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 5
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.9.7
+
+      - name: Add Conda
+        run: |
+          echo $CONDA/bin >> $GITHUB_PATH
+
+      - name: Applying flake8
+        run: |
+          conda install flake8
+          # checking for fatal errors in code
+          flake8 . --ignore=F821 --count --select=E9,F63,F7 --show-source --statistics
+      - name: Testing
+        run: |
+          conda install pytest
+          conda install numpy
+          conda install pandas
+          conda install matplotlib
+          conda install typing
+          pytest test_main.py
