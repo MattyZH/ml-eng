@@ -31,4 +31,4 @@ jobs:
           conda install pandas
           conda install matplotlib
           conda install typing
-          pytest test_main.py
+          pytest 
