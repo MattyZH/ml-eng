@@ -31,4 +31,5 @@ jobs:
           conda install pandas
           conda install matplotlib
           conda install typing
-          pytest 
+          conda install sklearn
+          pytest
