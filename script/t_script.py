@@ -2,6 +2,7 @@ import numpy as np
 import random
 import matplotlib.pyplot as plt
 import pandas as pd
+import click
 from typing import NoReturn, Tuple, List
 
 
@@ -25,7 +26,7 @@ def read_cancer_dataset(path_to_csv: str) -> Tuple[np.array, np.array]:
     """
     df = pd.read_csv(path_to_csv, converters={'label': lambda x: 1 if x == 'M' else 0})
 
-    return np.array(df.drop(labels='label')), np.array(df['label'])
+    return np.array(df.drop('label', axis=1)), np.array(df['label'])
 
 
 def read_spam_dataset(path_to_csv: str) -> Tuple[np.array, np.array]:
@@ -47,7 +48,7 @@ def read_spam_dataset(path_to_csv: str) -> Tuple[np.array, np.array]:
     """
     df = pd.read_csv(path_to_csv)
 
-    return np.array(df.drop(labels='label')), np.array(df['label'])
+    return np.array(df.drop('label', axis=1)), np.array(df['label'])
 
 
 def train_test_split(X: np.array, y: np.array, ratio: float
@@ -122,7 +123,7 @@ def get_precision_recall_accuracy(y_pred: np.array, y_true: np.array
     return precs, recs, accuracy
 
 
-def plot_precision_recall(X_train, y_train, X_test, y_test, max_k=30):
+def plot_precision_recall(X_train, y_train, X_test, y_test, max_k=30, directory='.'):
     ks = list(range(1, max_k + 1))
     classes = len(np.unique(list(y_train) + list(y_test)))
     precisions = [[] for _ in range(classes)]
@@ -149,14 +150,14 @@ def plot_precision_recall(X_train, y_train, X_test, y_test, max_k=30):
         if legend:
             plt.legend()
         plt.tight_layout()
-        plt.show()
+        plt.savefig(f'{directory}/{ylabel}.png')
 
     plot(ks, recalls, "Recall")
     plot(ks, precisions, "Precision")
     plot(ks, [accuracies], "Accuracy", legend=False)
 
 
-def plot_roc_curve(X_train, y_train, X_test, y_test, max_k=30):
+def plot_roc_curve(X_train, y_train, X_test, y_test, max_k=30, directory='.'):
     positive_samples = sum(1 for y in y_test if y == 0)
     ks = list(range(1, max_k + 1))
     curves_tpr = []
@@ -185,7 +186,7 @@ def plot_roc_curve(X_train, y_train, X_test, y_test, max_k=30):
     plt.xlim(-0.01, 1.01)
     plt.ylim(-0.01, 1.01)
     plt.tight_layout()
-    plt.show()
+    plt.savefig(f'{directory}/roc.png')
 
 
 class KDTree:
@@ -387,16 +388,19 @@ class KNearest:
         return np.argmax(self.predict_proba(X), axis=1)
 
 
-def plot_everything(max_k=30):
-    X, y = read_cancer_dataset('./data/cancer.csv')
+@click.command()
+@click.option('--max_k', type=click.INT, default=30, help='max k for kNN')
+def plot_everything(max_k):
+    X, y = read_cancer_dataset(snakemake.input.cancer)
     X_train, y_train, X_test, y_test = train_test_split(X, y, 0.9)
-    plot_precision_recall(X_train, y_train, X_test, y_test, max_k=max_k)
-    plot_roc_curve(X_train, y_train, X_test, y_test, max_k=max_k)
+    plot_precision_recall(X_train, y_train, X_test, y_test, max_k=max_k, directory=snakemake.output.cancer)
+    plot_roc_curve(X_train, y_train, X_test, y_test, max_k=max_k, directory=snakemake.output.cancer)
 
-    X, y = read_spam_dataset('./data/spam.csv')
+    X, y = read_spam_dataset(snakemake.input.spam)
     X_train, y_train, X_test, y_test = train_test_split(X, y, 0.9)
-    plot_precision_recall(X_train, y_train, X_test, y_test, max_k=max_k)
-    plot_roc_curve(X_train, y_train, X_test, y_test, max_k=max_k)
+    plot_precision_recall(X_train, y_train, X_test, y_test, max_k=max_k, directory=snakemake.output.spam)
+    plot_roc_curve(X_train, y_train, X_test, y_test, max_k=max_k, directory=snakemake.output.spam)
+
 
 
 if __name__ == '__main__':
