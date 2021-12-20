@@ -1,10 +1,11 @@
 import click
-from plotting import *
-from reading_files import *
+from plotting import plot_roc_curve, plot_precision_recall
+from reading_files import read_spam_dataset, read_cancer_dataset
+from structures import train_test_split
 
 
 @click.command()
-@click.option('--max_k', type=click.INT, default=30, help='max k for kNN')
+@click.option('--max_k', type=click.INT, default=30, help='Maximum leaf size for kNN')
 def plot_everything(max_k):
     X, y = read_cancer_dataset(snakemake.input.cancer)
     X_train, y_train, X_test, y_test = train_test_split(X, y, 0.9)

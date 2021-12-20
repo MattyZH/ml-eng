@@ -1,4 +1,5 @@
-from structures import *
+from structures import KNearest, get_precision_recall_accuracy
+import numpy as np
 import matplotlib.pyplot as plt
 
 

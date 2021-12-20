@@ -1,5 +1,6 @@
 import pandas as pd
 from typing import Tuple
+import numpy as np
 
 
 def read_cancer_dataset(path_to_csv: str) -> Tuple[np.array, np.array]:
