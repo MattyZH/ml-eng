@@ -1,7 +1,6 @@
-import pytest
 from sklearn.metrics import precision_recall_fscore_support, accuracy_score
 import numpy as np
-from script.t_script import train_test_split, get_precision_recall_accuracy, KDTree
+from script.structures import train_test_split, get_precision_recall_accuracy, KDTree
 from scipy.stats import bernoulli
 
 
